@@ -2,31 +2,22 @@ import { toTailwindcss } from 'transform-to-tailwindcss-core'
 import { toUnocssClass } from 'transform-to-unocss-core'
 
 const convertRgbaToHex = (rgba: string) => {
-  // background: rgba(41, 37, 36, 0.50) to background: #29252480
-  const color = rgba.match(/\((.*)\)/g)?.[0]
-  const [r, g, b, a] =
-    color
-      ?.replace('(', '')
-      .replace(')', '')
-      .split(',')
-      .map((i) => i.trim()) || []
-  const rNumber = Number(r)
-  const gNumber = Number(g)
-  const bNumber = Number(b)
-  const aNumber = Number(a)
-  if (!rNumber || !gNumber || !bNumber || !aNumber) return rgba
-  // Convert r, g, b to hex
-  const toHex = (c: number) => {
-    const hex = c.toString(16)
-    return hex.length === 1 ? '0' + hex : hex // Ensure two digits
+  // Regular expression to match rgba values
+  const rgbaRegex = /rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/
+
+  // Function to convert a single rgba color to hex
+  function rgbaToHex(r, g, b, a) {
+    r = Number(r).toString(16).padStart(2, '0')
+    g = Number(g).toString(16).padStart(2, '0')
+    b = Number(b).toString(16).padStart(2, '0')
+    a = Math.round(Number(a) * 255)
+      .toString(16)
+      .padStart(2, '0')
+    return `#${r}${g}${b}${a}`
   }
 
-  // Convert alpha to hex (0-1 to 00-FF)
-  const alphaHex = Math.round(aNumber * 255)
-  const alpha = alphaHex.toString(16).padStart(2, '0') // Ensure two digits
-
-  // Return the hex representation
-  return `#${toHex(rNumber)}${toHex(gNumber)}${toHex(bNumber)}${alpha}`
+  // Replace rgba values with hex
+  return rgba.replace(rgbaRegex, (match, r, g, b, a) => rgbaToHex(r, g, b, a))
 }
 
 const extractVar = (style: string) => {
@@ -38,15 +29,14 @@ const extractVar = (style: string) => {
 }
 
 const toTailwind = (style: string, isRem: boolean) => {
-  console.log('toTailwind', style)
   if (style.includes('letter-spacing:')) {
     // letter-spacing: -0.32px to tracking-[-0.32px]
     return `tracking-[${style.replace('letter-spacing: ', '')}]`
   } else if (style === 'font-style: normal') {
     return 'font-normal'
-  } else if (style.includes('background: rgba')) {
+  } else if (style.includes('rgba')) {
     // convert rgba
-    return `bg-[${convertRgbaToHex(style)}]`
+    return toTailwindcss(convertRgbaToHex(style), isRem)
   }
   return toTailwindcss(style, isRem)
 }
