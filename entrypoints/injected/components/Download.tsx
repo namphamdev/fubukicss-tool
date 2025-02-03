@@ -1,4 +1,3 @@
-import { ColorWheelIcon } from '@radix-ui/react-icons'
 import { useAtomValue } from 'jotai'
 import { memo, useEffect, useState } from 'react'
 import { Clipboard } from 'react-feather'
@@ -17,6 +16,78 @@ function isSVG(node: SceneNode, depth: number = 0): boolean {
   } else {
     return ['VECTOR', 'ELLIPSE', 'RECTANGLE', 'POLYGON', 'POLYLINE', 'STAR', 'LINE'].includes(node.type)
   }
+}
+function convertSvgToRNSvg(svgString: string) {
+  // Remove XML declaration and DOCTYPE
+  let cleaned = svgString.replace(/<\?xml.*?\?>/, '').replace(/<!DOCTYPE.*?>/, '')
+
+  // Convert style attribute to object syntax
+  cleaned = cleaned.replace(/style="([^"]*)"/, (match, style) => {
+    const styleObject = style
+      .split(';')
+      .filter(Boolean)
+      .reduce((acc: Record<string, string>, current: string) => {
+        const [property, value] = current.split(':').map((str) => str.trim())
+        // Convert kebab-case to camelCase
+        const camelCaseProp = property.replace(/-([a-z])/g, (g) => g[1].toUpperCase())
+        acc[camelCaseProp] = value
+        return acc
+      }, {})
+    return `style={${JSON.stringify(styleObject)}}`
+  })
+
+  // Convert HTML attributes to React Native format
+  cleaned = cleaned
+    // class to className
+    .replace(/class=/g, 'className=')
+    // Convert kebab-case attributes to camelCase
+    .replace(/([a-z])-([a-z])/g, (match, p1, p2) => p1 + p2.toUpperCase())
+    // Convert fill-rule to fillRule
+    .replace(/fill-rule/g, 'fillRule')
+    // Convert clip-rule to clipRule
+    .replace(/clip-rule/g, 'clipRule')
+    // Convert stroke-width to strokeWidth
+    .replace(/stroke-width/g, 'strokeWidth')
+    // Convert xlink:href to xlinkHref
+    .replace(/xlink:href/g, 'xlinkHref')
+
+  // Convert colors to string format
+  cleaned = cleaned.replace(/(fill|stroke)="(#[0-9a-fA-F]{3,6})"/g, '$1="$2"')
+
+  // Convert SVG tags to uppercase
+  cleaned = cleaned.replace(/<\/?([a-z-]+)([\s>])/g, (match, tag, ending) => {
+    // List of SVG elements that need to be capitalized
+    const svgTags = {
+      svg: 'Svg',
+      circle: 'Circle',
+      path: 'Path',
+      rect: 'Rect',
+      line: 'Line',
+      polyline: 'Polyline',
+      polygon: 'Polygon',
+      ellipse: 'Ellipse',
+      g: 'G',
+      text: 'Text',
+      tspan: 'TSpan',
+      defs: 'Defs',
+      linearGradient: 'LinearGradient',
+      radialGradient: 'RadialGradient',
+      stop: 'Stop',
+      clipPath: 'ClipPath',
+      mask: 'Mask',
+      pattern: 'Pattern',
+      image: 'Image',
+      use: 'Use',
+    }
+
+    const capitalizedTag = svgTags[tag as keyof typeof svgTags] || tag
+    return match.replace(tag, capitalizedTag)
+  })
+
+  // Self-closing tags
+  cleaned = cleaned.replace(/<([A-Za-z]+)([^>]*)>\s*<\/[^>]+>/g, '<$1$2 />')
+
+  return cleaned
 }
 
 export const Download = memo((props: { minimized?: boolean }) => {
@@ -40,6 +111,75 @@ export const Download = memo((props: { minimized?: boolean }) => {
           error: true,
         })
       })
+  }
+
+  const handleReactNative = () => {
+    const svgData = convertSvgToRNSvg(svgString)
+    setSvgString(svgData)
+    handleCopy(svgData)
+  }
+
+  const onDownload = async () => {
+    const data =
+      ext === 'svg'
+        ? await node?.exportAsync({
+            format: 'SVG_STRING',
+          })
+        : await node?.exportAsync({
+            format: ext.toUpperCase() as 'PNG',
+            constraint: {
+              type: 'SCALE',
+              value: scale,
+            },
+          })
+    if (data) {
+      arrayBufferToImageFile(
+        data,
+        node?.name ? `${node?.name}.${ext}` : 'fubukitool.png',
+        `image/${ext === 'svg' ? 'svg+xml' : ext}`,
+      )
+    }
+  }
+
+  const onDownloadBackground = async () => {
+    let data: any
+    // @ts-ignore
+    if (node?.children?.length > 0) {
+      try {
+        // @ts-ignore
+        node.children.forEach((child: any) => {
+          child.opacity = 0
+        })
+        data = await node?.exportAsync({
+          format: ext.toUpperCase() as 'PNG',
+          constraint: {
+            type: 'SCALE',
+            value: scale,
+          },
+        })
+      } catch (e) {
+        figma?.notify('You must have edit permission to export background only', {
+          error: true,
+        })
+        return
+      }
+    } else {
+      data = await node?.exportAsync({
+        format: ext.toUpperCase() as 'PNG',
+        constraint: {
+          type: 'SCALE',
+          value: scale,
+        },
+      })
+    }
+
+    if (data) {
+      arrayBufferToImageFile(
+        data,
+        node?.name ? `${node?.name}.${ext}` : 'fubukitool.png',
+        `image/${ext === 'svg' ? 'svg+xml' : ext}`,
+      )
+    }
   }
 
   useEffect(() => {
@@ -77,34 +217,24 @@ export const Download = memo((props: { minimized?: boolean }) => {
         <span className="flex-1 font-550">Export</span>
         <span
           className="flex items-center gap-.5 text-xs text-$color-text-secondary cursor-pointer"
+          onClick={() => handleReactNative()}
+        >
+          React native
+        </span>
+        <span
+          className="flex items-center gap-.5 text-xs text-$color-text-secondary cursor-pointer"
           onClick={() => setShow(!show)}
         >
           <span className={`w-3 h-3 ${show ? 'rotate-90' : ''} i-fe:play`}></span>
-          preview
+          Preview
         </span>
         <span
           className="w-4 h-4 text-$color-text-secondary hover:text-$color-text cursor-pointer i-fe:download"
-          onClick={async () => {
-            const data =
-              ext === 'svg'
-                ? await node?.exportAsync({
-                    format: 'SVG_STRING',
-                  })
-                : await node?.exportAsync({
-                    format: ext.toUpperCase() as 'PNG',
-                    constraint: {
-                      type: 'SCALE',
-                      value: scale,
-                    },
-                  })
-            if (data) {
-              arrayBufferToImageFile(
-                data,
-                node?.name ? `${node?.name}.${ext}` : 'fubukitool.png',
-                `image/${ext === 'svg' ? 'svg+xml' : ext}`,
-              )
-            }
-          }}
+          onClick={onDownload}
+        ></span>
+        <span
+          className="w-4 h-4 text-blue-400 hover:text-$color-text cursor-pointer i-fe:download"
+          onClick={onDownloadBackground}
         ></span>
       </div>
       {imageBase64 && show && (
