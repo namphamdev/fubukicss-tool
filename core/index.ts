@@ -28,15 +28,33 @@ const extractVar = (style: string) => {
   })
 }
 
+const transformFontFamily = (style: string) => {
+  // font-family: "Geist Mono"; to font-family: Geist-Mono
+  return style.replace(/font-family: (.*)/g, (match, $1) => {
+    return `font-${$1.replace(/["']/g, '').replace(/\s+/g, '-')}`
+  })
+}
+
 const toTailwind = (style: string, isRem: boolean) => {
   if (style.includes('letter-spacing:')) {
     // letter-spacing: -0.32px to tracking-[-0.32px]
     return `tracking-[${style.replace('letter-spacing: ', '')}]`
   } else if (style === 'font-style: normal') {
-    return 'font-normal'
+    return ''
   } else if (style.includes('rgba')) {
     // convert rgba
     return toTailwindcss(convertRgbaToHex(style), isRem)
+  } else if (style.includes('font-weight:')) {
+    const weight = style.replace('font-weight: ', '')
+    try {
+      return `font-[${parseInt(weight)}]`
+    } catch (e) {
+      return `font-${weight}`
+    }
+  } else if (style.includes('font-family:') && style.includes('"')) {
+    return transformFontFamily(style)
+  } else if (style === 'flex: 1 0 0') {
+    return 'flex-1'
   }
   return toTailwindcss(style, isRem)
 }
@@ -55,7 +73,7 @@ export const transformToAtomic = (
     .map((i) => extractVar(i))
     .map((i) => (engine === 'unocss' ? toUnocssClass(i, isRem)[0] : toTailwind(i, isRem)))
     .map((i) => `${prefix}${i}`)
-    .filter((i) => !['undefined', '-webkit-box'].includes(i))
+    .filter((i) => !['undefined', '-webkit-box', '', 'self-stretch'].includes(i))
     .join(' ')
     .replace(/border-(\d+\.\d+|\d+)/g, (_, $1) => `border-${Number($1) * 4}`)
     .replace(/(border-[xylrtb]-)(\d+\.\d+|\d+)/g, (_, $1, $2) => `${$1}${Number($2) * 4}`)
@@ -70,7 +88,7 @@ export const transformToAtomic = (
     .map((i) => (engine === 'unocss' ? toUnocssClass(i, isRem)[0] : toTailwind(i, isRem)))
     .filter((i) => ['lh-normal', 'font-not-italic', 'bg-[url(]'].every((item) => !i?.startsWith(item)))
     .map((i) => `${prefix}${i}`)
-    .filter((i) => !['undefined', '-webkit-box'].includes(i))
+    .filter((i) => !['undefined', '-webkit-box', '', 'self-stretch'].includes(i))
     .join(' ')
     .replace(/border-(\d+\.\d+|\d+)/g, (_, $1) => `border-${Number($1) * 4}`)
     .replace(/(border-[xylrtb]-)(\d+\.\d+|\d+)/g, (_, $1, $2) => `${$1}${Number($2) * 4}`)

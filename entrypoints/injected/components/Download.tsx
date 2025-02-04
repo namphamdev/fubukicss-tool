@@ -17,83 +17,108 @@ function isSVG(node: SceneNode, depth: number = 0): boolean {
     return ['VECTOR', 'ELLIPSE', 'RECTANGLE', 'POLYGON', 'POLYLINE', 'STAR', 'LINE'].includes(node.type)
   }
 }
-function convertSvgToRNSvg(svgString: string) {
-  // Remove XML declaration and DOCTYPE
-  let cleaned = svgString.replace(/<\?xml.*?\?>/, '').replace(/<!DOCTYPE.*?>/, '')
 
-  // Convert style attribute to object syntax
-  cleaned = cleaned.replace(/style="([^"]*)"/, (match, style) => {
-    const styleObject = style
-      .split(';')
-      .filter(Boolean)
-      .reduce((acc: Record<string, string>, current: string) => {
-        const [property, value] = current.split(':').map((str) => str.trim())
-        // Convert kebab-case to camelCase
-        const camelCaseProp = property.replace(/-([a-z])/g, (g) => g[1].toUpperCase())
-        acc[camelCaseProp] = value
-        return acc
-      }, {})
-    return `style={${JSON.stringify(styleObject)}}`
+const convertSvgToReact = async (svgString: string) => {
+  // POST request to https://api.react-svgr.com/api/svgr
+  const response = await fetch('https://api.react-svgr.com/api/svgr', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      code: svgString,
+      options: {
+        dimensions: false,
+        icon: false,
+        native: false,
+        typescript: false,
+        ref: false,
+        memo: false,
+        titleProp: false,
+        descProp: false,
+        expandProps: false,
+        replaceAttrValues: {},
+        svgProps: {},
+        exportType: 'default',
+        namedExport: 'ReactComponent',
+        jsxRuntime: 'automatic',
+        svgo: false,
+        svgoConfig: {
+          plugins: [
+            {
+              name: 'preset-default',
+              params: {
+                overrides: {
+                  removeTitle: false,
+                },
+              },
+            },
+          ],
+        },
+        prettier: true,
+        prettierConfig: {
+          semi: false,
+        },
+      },
+    }),
   })
+  const data = await response.json()
+  return data.output.replace('const SvgComponent = () => (\n  ', '').replace('\n)\nexport default SvgComponent\n', '')
+}
 
-  // Convert HTML attributes to React Native format
-  cleaned = cleaned
-    // class to className
-    .replace(/class=/g, 'className=')
-    // Convert kebab-case attributes to camelCase
-    .replace(/([a-z])-([a-z])/g, (match, p1, p2) => p1 + p2.toUpperCase())
-    // Convert fill-rule to fillRule
-    .replace(/fill-rule/g, 'fillRule')
-    // Convert clip-rule to clipRule
-    .replace(/clip-rule/g, 'clipRule')
-    // Convert stroke-width to strokeWidth
-    .replace(/stroke-width/g, 'strokeWidth')
-    // Convert xlink:href to xlinkHref
-    .replace(/xlink:href/g, 'xlinkHref')
-
-  // Convert colors to string format
-  cleaned = cleaned.replace(/(fill|stroke)="(#[0-9a-fA-F]{3,6})"/g, '$1="$2"')
-
-  // Convert SVG tags to uppercase
-  cleaned = cleaned.replace(/<\/?([a-z-]+)([\s>])/g, (match, tag, ending) => {
-    // List of SVG elements that need to be capitalized
-    const svgTags = {
-      svg: 'Svg',
-      circle: 'Circle',
-      path: 'Path',
-      rect: 'Rect',
-      line: 'Line',
-      polyline: 'Polyline',
-      polygon: 'Polygon',
-      ellipse: 'Ellipse',
-      g: 'G',
-      text: 'Text',
-      tspan: 'TSpan',
-      defs: 'Defs',
-      linearGradient: 'LinearGradient',
-      radialGradient: 'RadialGradient',
-      stop: 'Stop',
-      clipPath: 'ClipPath',
-      mask: 'Mask',
-      pattern: 'Pattern',
-      image: 'Image',
-      use: 'Use',
-    }
-
-    const capitalizedTag = svgTags[tag as keyof typeof svgTags] || tag
-    return match.replace(tag, capitalizedTag)
+const convertSvgToReactNative = async (svgString: string) => {
+  // POST request to https://api.react-svgr.com/api/svgr
+  const response = await fetch('https://api.react-svgr.com/api/svgr', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      code: svgString,
+      options: {
+        dimensions: false,
+        icon: false,
+        native: true,
+        typescript: false,
+        ref: false,
+        memo: false,
+        titleProp: false,
+        descProp: false,
+        expandProps: false,
+        replaceAttrValues: {},
+        svgProps: {},
+        exportType: 'default',
+        namedExport: 'ReactComponent',
+        jsxRuntime: 'automatic',
+        svgo: false,
+        svgoConfig: {
+          plugins: [
+            {
+              name: 'preset-default',
+              params: {
+                overrides: {
+                  removeTitle: false,
+                },
+              },
+            },
+          ],
+        },
+        prettier: true,
+        prettierConfig: {
+          semi: false,
+        },
+      },
+    }),
   })
-
-  // Self-closing tags
-  cleaned = cleaned.replace(/<([A-Za-z]+)([^>]*)>\s*<\/[^>]+>/g, '<$1$2 />')
-
-  return cleaned
+  const data = await response.json()
+  return data.output.replace('const SvgComponent = () => (\n  ', '').replace('\n)\nexport default SvgComponent\n', '')
 }
 
 export const Download = memo((props: { minimized?: boolean }) => {
   const node = useAtomValue(currentSelection)
   const [imageBase64, setImageBase64] = useState('')
   const [svgString, setSvgString] = useState('')
+  const [reactNativeString, setReactNativeString] = useState('')
   const scale = useAtomValue(exportScale)
   const ext = useAtomValue(exportExt)
 
@@ -113,10 +138,14 @@ export const Download = memo((props: { minimized?: boolean }) => {
       })
   }
 
-  const handleReactNative = () => {
-    const svgData = convertSvgToRNSvg(svgString)
-    setSvgString(svgData)
-    handleCopy(svgData)
+  const handleReactNative = async () => {
+    if (!node) return
+    const svgData = await node?.exportAsync({
+      format: 'SVG_STRING',
+    })
+    const reactNativeCode = await convertSvgToReactNative(svgData)
+    setSvgString(reactNativeCode)
+    handleCopy(reactNativeCode)
   }
 
   const onDownload = async () => {
@@ -191,7 +220,10 @@ export const Download = memo((props: { minimized?: boolean }) => {
           })
           const svgBase64 = 'data:image/svg+xml;base64,' + btoa(svgData)
           setImageBase64(svgBase64)
-          setSvgString(svgData)
+          const reactCode = await convertSvgToReact(svgData)
+          setSvgString(reactCode)
+          const reactNativeCode = await convertSvgToReactNative(svgData)
+          setReactNativeString(reactNativeCode)
         } else {
           const data = await node.exportAsync({
             format: 'PNG',
@@ -215,12 +247,6 @@ export const Download = memo((props: { minimized?: boolean }) => {
     >
       <div className="flex items-center gap-2">
         <span className="flex-1 font-550">Export</span>
-        <span
-          className="flex items-center gap-.5 text-xs text-$color-text-secondary cursor-pointer"
-          onClick={() => handleReactNative()}
-        >
-          React native
-        </span>
         <span
           className="flex items-center gap-.5 text-xs text-$color-text-secondary cursor-pointer"
           onClick={() => setShow(!show)}
@@ -264,6 +290,25 @@ export const Download = memo((props: { minimized?: boolean }) => {
           </div>
           <textarea
             value={svgString}
+            readOnly
+            rows={0}
+            autoComplete="off"
+            className="px-4 h-auto py-4 lh-4.5 bg-#f5f5f5 cursor-text text-xs font-['Roboto_Mono'] text-$color-text resize-none scrollbar-hide"
+          ></textarea>
+        </div>
+      )}
+      {reactNativeString && (
+        <div className="flex flex-col items-stretch bg-#f5f5f5 rounded-sm overflow-hidden">
+          <div className="px-4 h-8 flex-center justify-between border-b border-$color-border border-solid">
+            <span className="text-$color-text-secondary text-xs">RN Svg</span>
+            <Clipboard
+              size={16}
+              className="cursor-pointer text-$color-text-secondary hover:text-$color-text"
+              onClick={handleCopy(reactNativeString)}
+            />
+          </div>
+          <textarea
+            value={reactNativeString}
             readOnly
             rows={0}
             autoComplete="off"
